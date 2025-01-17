@@ -5,13 +5,17 @@ IFS=',' read -ra GPULIST <<< "$gpu_list"
 
 CHUNKS=${#GPULIST[@]}
 
-CKPT="llava-v1.5-13b"
+CKPT="llava-v1.5-7b"
 SPLIT="llava_gqa_testdev_balanced"
 GQADIR="./playground/data/eval/gqa/data"
 
+pwd
+which python
+export LD_LIBRARY_PATH=/opt/conda/envs/llava/lib/python3.10/site-packages/nvidia/nvjitlink/lib:/usr/local/cuda/lib64:/usr/local/cuda/compat/lib.real:$LD_LIBRARY_PATH
+
 for IDX in $(seq 0 $((CHUNKS-1))); do
     CUDA_VISIBLE_DEVICES=${GPULIST[$IDX]} python -m llava.eval.model_vqa_loader \
-        --model-path liuhaotian/llava-v1.5-13b \
+        --model-path /zhaowei/models/llava-v1.5-7b \
         --question-file ./playground/data/eval/gqa/$SPLIT.jsonl \
         --image-folder ./playground/data/eval/gqa/data/images \
         --answers-file ./playground/data/eval/gqa/answers/$SPLIT/$CKPT/${CHUNKS}_${IDX}.jsonl \
@@ -36,4 +40,4 @@ done
 python scripts/convert_gqa_for_eval.py --src $output_file --dst $GQADIR/testdev_balanced_predictions.json
 
 cd $GQADIR
-python eval/eval.py --tier testdev_balanced
+python eval/1_eval.py --tier testdev_balanced

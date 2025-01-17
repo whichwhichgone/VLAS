@@ -4,9 +4,11 @@ import base64
 import torch
 import math
 import ast
+import re
 
+import transformers
 from transformers import StoppingCriteria
-from llava.constants import IMAGE_TOKEN_INDEX
+from llava.constants import IMAGE_TOKEN_INDEX, AUDIO_TOKEN_INDEX, GOAL_TOKEN_INDEX
 
 
 def select_best_resolution(original_size, possible_resolutions):
@@ -204,6 +206,65 @@ def tokenizer_image_token(prompt, tokenizer, image_token_index=IMAGE_TOKEN_INDEX
     return input_ids
 
 
+def tokenizer_audio_token(prompt, tokenizer, audio_token_index=AUDIO_TOKEN_INDEX, return_tensors=None):
+    prompt_chunks = [tokenizer(chunk).input_ids for chunk in prompt.split('<audio>')]
+
+    def insert_separator(X, sep):
+        ans = []
+        for sublist in zip(X, [sep]*len(X)):
+            for ele in sublist:
+                ans.append(ele)
+        return ans[:-1]
+
+    input_ids = []
+    offset = 0
+    if len(prompt_chunks) > 0 and len(prompt_chunks[0]) > 0 and prompt_chunks[0][0] == tokenizer.bos_token_id:
+        # current code always go here
+        offset = 1
+        input_ids.append(prompt_chunks[0][0])
+
+    for x in insert_separator(prompt_chunks, [audio_token_index] * (offset + 1)):
+        input_ids.extend(x[offset:])
+
+    if return_tensors is not None:
+        if return_tensors == 'pt':
+            return torch.tensor(input_ids, dtype=torch.long)
+        raise ValueError(f'Unsupported tensor type: {return_tensors}')
+    return input_ids
+
+
+def tokenizer_image_audio_token(prompt, tokenizer, image_token_index=IMAGE_TOKEN_INDEX, audio_token_index=AUDIO_TOKEN_INDEX, goal_token_index=GOAL_TOKEN_INDEX, return_tensors=None):
+    regex_pattern = '|'.join(['<image>', '<audio>', '<goal>'])
+    prompt_chunks = []
+    for chunk in re.split(f'({regex_pattern})', prompt):
+        if chunk == '<image>':
+            prompt_chunks.append(image_token_index)
+        elif chunk == '<audio>':
+            prompt_chunks.append(audio_token_index)
+        elif chunk == '<goal>':
+            prompt_chunks.append(goal_token_index)
+        else:
+            prompt_chunks.append(tokenizer(chunk).input_ids)
+
+    input_ids = []
+    offset = 0
+    if len(prompt_chunks) > 0 and len(prompt_chunks[0]) > 0 and prompt_chunks[0][0] == tokenizer.bos_token_id:
+        offset = 1
+        input_ids.append(prompt_chunks[0][0])
+
+    for chunk_ids in prompt_chunks:
+        if isinstance(chunk_ids, list):
+            input_ids.extend(chunk_ids[offset:])
+        else:
+            input_ids.extend([chunk_ids])
+
+    if return_tensors is not None:
+        if return_tensors == 'pt':
+            return torch.tensor(input_ids, dtype=torch.long)
+        raise ValueError(f'Unsupported tensor type: {return_tensors}')
+    return input_ids
+
+
 def get_model_name_from_path(model_path):
     model_path = model_path.strip("/")
     model_paths = model_path.split("/")
@@ -245,3 +306,18 @@ class KeywordsStoppingCriteria(StoppingCriteria):
         for i in range(output_ids.shape[0]):
             outputs.append(self.call_for_batch(output_ids[i].unsqueeze(0), scores))
         return all(outputs)
+
+
+# Add for LLT test
+if __name__ == "__main__":
+    model_path = "/zhaowei/models/llava-v1.5-7b"
+    tokenizer = transformers.AutoTokenizer.from_pretrained(
+            model_path,
+            model_max_length=2048,
+            padding_side="right",
+            use_fast=False,
+        )
+    test_prompt = "<audio>What is <image> the <image> capital of France?\n"
+    test_target_ids = [1, -300, 1724, 338, 29871, -200, 29871, 278, 29871, -200, 29871, 7483, 310, 3444, 29973, 13]
+    assert tokenizer_image_audio_token(test_prompt, tokenizer) == test_target_ids
+    print("Test passed.")

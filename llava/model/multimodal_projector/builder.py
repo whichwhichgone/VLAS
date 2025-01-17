@@ -49,3 +49,38 @@ def build_vision_projector(config, delay_load=False, **kwargs):
         return IdentityMap()
 
     raise ValueError(f'Unknown projector type: {projector_type}')
+
+
+def build_audio_projector(config, delay_load=False, **kwargs):
+    audio_projector = DownsampleAudioProjector(config)
+    return audio_projector
+
+
+class DownsampleAudioProjector(nn.Module):
+    def __init__(self, config, reduce_factor=5):
+        super().__init__()
+        self.linear_in = nn.Linear(config.mm_hidden_size_audio * reduce_factor, config.hidden_size)
+        self.act = nn.GELU()
+        self.linear_out = nn.Linear(config.hidden_size, config.hidden_size)
+        self.reduce_factor = reduce_factor
+    
+    def forward(self, input_):
+        input_ = input_.reshape(input_.shape[0], -1, self.reduce_factor * input_.shape[-1])
+        output = self.linear_in(input_)
+        output = self.act(output)
+        output = self.linear_out(output)
+        return output
+
+
+class MlpAudioProjector(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.linear_in = nn.Linear(config.mm_hidden_size_audio, config.hidden_size)
+        self.act = nn.GELU()
+        self.linear_out = nn.Linear(config.hidden_size, config.hidden_size)
+    
+    def forward(self, input_):
+        output = self.linear_in(input_)
+        output = self.act(output)
+        output = self.linear_out(output)
+        return output

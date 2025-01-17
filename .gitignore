@@ -3,6 +3,8 @@ __pycache__
 *.pyc
 *.egg-info
 dist
+.vscode/*
+core.*
 
 # Log
 *.log
@@ -12,6 +14,11 @@ dist
 
 # Data
 !**/alpaca-data-conversation.json
+playground/data/
+playground/calvin_data/*.json
+playground/calvin_data/calvin_debug_dataset
+playground/calvin_data/task_ABCD_D
+playground/calvin_data_audio/*.json
 
 # Editor
 .idea
