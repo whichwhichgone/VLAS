@@ -1,10 +1,6 @@
 import os
-<<<<<<< HEAD
-from .clip_encoder import CLIPVisionTower
-from .whisper_encoder import WhisperAudioTower
-=======
 from .clip_encoder import CLIPVisionTower, CLIPVisionTowerS2
->>>>>>> c121f0432da27facab705978f83c4ada465e46fd
+from .whisper_encoder import WhisperAudioTower
 
 
 def build_vision_tower(vision_tower_cfg, **kwargs):
