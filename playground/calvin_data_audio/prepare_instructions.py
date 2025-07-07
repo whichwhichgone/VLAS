@@ -1,3 +1,24 @@
+"""
+Calvin Dataset Text Instruction Extraction
+
+This script extracts and prepares text instructions from the original Calvin robot
+manipulation dataset. The Calvin dataset contains robot manipulation tasks with natural
+language annotations describing the actions.
+
+Main functionality:
+1. Loads language annotations from the Calvin dataset
+2. Extracts all unique text instructions from the annotation data
+3. Creates an instruction-to-ID mapping for indexing
+4. Saves the processed instructions to a JSONL file
+
+The output file serves as input for TTS tools to generate corresponding speech
+instructions, enabling the creation of audio-visual robot manipulation datasets
+for multimodal learning.
+
+Input: Calvin dataset with language annotations (auto_lang_ann.npy)
+Output: JSONL file containing instruction-ID pairs for TTS processing
+"""
+
 import os
 import argparse
 import json
@@ -24,7 +45,7 @@ if __name__ == "__main__":
     assert lang_info.exists(), "Invalid data path"
     ann_data = np.load(lang_info, allow_pickle=True).item()
     ann_lang = ann_data["language"]["ann"]
-    instruct_set = set(ann_lang)
+    instruct_set = sorted(set(ann_lang))
 
     instruct2id = [(instruct, idx) for idx, instruct in enumerate(instruct_set)]
     instruct_file = Path(__file__).parent / (calvin_data.stem + ".jsonl")
@@ -33,4 +54,3 @@ if __name__ == "__main__":
             f.write(json.dumps(item) + "\n")
 
     print("Instructions have been successfully prepared.")
-

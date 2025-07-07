@@ -1,3 +1,28 @@
+"""
+Calvin Dataset to JSON Conversion for VLA Training
+
+This script converts the original Calvin robot manipulation dataset into JSON format
+suitable for Vision-Language-Action (VLA) model training. The Calvin dataset contains
+robot manipulation episodes with visual observations, language instructions, and actions.
+
+Key functionalities:
+1. Processes Calvin dataset episodes with multi-view camera observations
+2. Combines static and gripper camera views into single composite images
+3. Extracts future action sequences for multi-step prediction training
+4. Generates training samples with language instructions and robot observations
+5. Creates JSON files with file paths referencing separately stored multimodal data
+
+Data processing pipeline:
+- Loads language annotations and task information from Calvin dataset
+- Processes each episode step to extract visual observations and actions
+- Resizes and concatenates static and gripper camera images (336x336 total)
+- Saves processed images to local directory with unique identifiers
+- Creates JSON entries with image paths, conversations, and action targets
+
+Input: Original Calvin dataset with .npz episode files and language annotations
+Output: JSON training files with image paths + separately saved processed images
+"""
+
 import os
 import json
 import argparse
@@ -11,7 +36,7 @@ import shortuuid
 import random
 
 
-TARGET_IMG_SIZE = 334
+TARGET_IMG_SIZE = 336
 
 
 def get_llm_data(
@@ -44,7 +69,7 @@ def get_llm_data(
     return llm_item
 
 
-def process_episide(episode: tuple, data_path: Path, split: str, future_k: int = 20):
+def process_episide(episode: tuple, data_path: Path, split: str, future_k: int = 5):
     llm_data_list = []
     ann, task, index_range = episode[0], episode[1], episode[2]
 
@@ -64,7 +89,7 @@ def process_episide(episode: tuple, data_path: Path, split: str, future_k: int =
             else:
                 break
             next_actions.append(actions)
-        
+
         if len(next_actions) < future_k:
             pad_num = future_k - len(next_actions)
             pad_action = next_actions[-1]
@@ -91,13 +116,16 @@ def process_episide(episode: tuple, data_path: Path, split: str, future_k: int =
         uuid = shortuuid.ShortUUID().random(length=7)
         sample = uuid + "_" + str(step).zfill(7) + ".jpg"
         os.makedirs(
-            Path("/zhaowei/data/calvin") / data_path.stem / "vla_processed_r20" / split,
+            Path("/zhaowei/data/calvin")
+            / data_path.stem
+            / f"vla_processed_r{future_k}"
+            / split,
             exist_ok=True,
         )
         img_concat.save(
             Path("/zhaowei/data/calvin")
             / data_path.stem
-            / "vla_processed_r20"
+            / f"vla_processed_r{future_k}"
             / split
             / sample
         )
@@ -116,23 +144,25 @@ def build_json_lang(data_path, debug):
         lang_task = ann_data["language"]["task"]
         lang_index = ann_data["info"]["indx"]
         partial_episode_process = partial(
-            process_episide, data_path=data_path, split=split
+            process_episide, data_path=data_path, split=split, future_k=5
         )
 
         if not debug:
             with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
                 results = pool.map(
-                   partial_episode_process, zip(lang_ann, lang_task, lang_index)
+                    partial_episode_process, zip(lang_ann, lang_task, lang_index)
                 )
             llm_data_list = [item for sub_results in results for item in sub_results]
         else:
             for zip_item in zip(lang_ann, lang_task, lang_index):
                 results = partial_episode_process(zip_item)
-            
+
             # debug mode: only process the last zip_item
             llm_data_list = results
 
-        target_file = Path(__file__).parent / (data_path.stem + "_" + split + "_r20.json")
+        target_file = Path(__file__).parent / (
+            data_path.stem + "_" + split + f"_r{future_k}.json"
+        )
         with open(target_file, "w") as json_file:
             json.dump(llm_data_list, json_file, indent=4)
 

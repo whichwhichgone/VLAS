@@ -40,3 +40,6 @@ ckpts*
 
 # Demo
 serve_images/
+
+tools/
+logs/

@@ -1,3 +1,31 @@
+"""
+Calvin Dataset Speech Instruction Synthesis
+
+This script synthesizes audio instructions from extracted text instructions using
+text-to-speech (TTS) technology. It converts the text-based robot manipulation
+instructions from the Calvin dataset into corresponding speech instructions.
+
+Main functionality:
+1. Loads pre-trained TTS model (VITS with x-vector speaker embeddings)
+2. Processes text instructions extracted from Calvin dataset
+3. Synthesizes audio for each instruction using 500 different speaker voices
+4. Generates diverse audio instructions with various speaker characteristics
+5. Saves synthesized audio files organized by task and speaker ID
+
+Key features:
+- Uses ESPnet2 TTS framework with VITS model
+- Leverages x-vector speaker embeddings for voice diversity
+- Supports parallel processing through chunking mechanism
+- Generates high-quality 16kHz PCM audio files
+
+The synthesized audio instructions enable the creation of multimodal robot
+manipulation datasets combining vision, language, and speech modalities for
+advanced multimodal learning research.
+
+Input: Text instructions in JSONL format with instruction-ID pairs
+Output: WAV audio files organized by task/speaker/instruction hierarchy
+"""
+
 import json
 import random
 import numpy as np

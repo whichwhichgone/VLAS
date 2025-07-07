@@ -10,13 +10,9 @@ IFS=',' read -ra GPULIST <<< "$gpu_list"
 CHUNKS=${#GPULIST[@]}
 
 for IDX in $(seq 0 $((CHUNKS-1))); do
-    CUDA_VISIBLE_DEVICES=${GPULIST[$IDX]} python librispeech_coco2speech.py \
-        --json-file ./playground/data/coco_plain_${IDX}.json \
+    CUDA_VISIBLE_DEVICES=${GPULIST[$IDX]} python speech/tts_coco2speech.py \
+        --json-file ./playground/data/coco_qa_splits_${IDX}.json \
         --chunk-idx $IDX &
 done
 
 wait
-
-
-
-

@@ -1,18 +1,16 @@
 #!/bin/bash
 which python
-export LD_LIBRARY_PATH=/opt/conda/envs/llava/lib/python3.10/site-packages/nvidia/nvjitlink/lib:/usr/local/cuda/lib64:/usr/local/cuda/compat/lib.real:$LD_LIBRARY_PATH
-export WANDB_API_KEY=local-73e66a04fa97e2a5d5c573a97e65bf1194533e1f
-export WANDB_BASE_URL=http://10.28.0.22:30437/
+export WANDB_API_KEY=83793606f810aa3d385ea5d12dbd352514ac54e1
 
 deepspeed llava/train/asr_train_mem.py \
-    --deepspeed ./scripts/zero2.json \
+    --deepspeed scripts/zero2.json \
     --model_name_or_path /zhaowei/models/llava-v1.5-7b \
     --version plain \
-    --data_path ./playground/data/LLaVA-Pretrain/librispeech_asr_train_clean_100.json \
-    --image_folder ./playground/data/LLaVA-Pretrain/images \
+    --data_path playground/data/LLaVA-Pretrain/stage1_speech_data.json \
+    --image_folder playground/data/LLaVA-Pretrain/images \
     --vision_tower /zhaowei/models/clip-vit-large-patch14-336 \
-    --audio_folder /zhaowei/data/LLaVA-Audio \
-    --audio_folder_asr /zhaowei/data/LibriSpeech/train-clean-100 \
+    --audio_folder /zhaowei/data/LLaVA-Audio-TTS \
+    --audio_folder_asr /zhaowei/data_usr/LibriSpeech/train-clean-100 \
     --audio_tower /zhaowei/models/models--openai--whisper-large-v2/snapshots/ae4642769ce2ad8fc292556ccea8e901f1530655 \
     --mm_projector_type mlp2x_gelu \
     --tune_audio_adapter True \
@@ -20,8 +18,8 @@ deepspeed llava/train/asr_train_mem.py \
     --mm_use_im_start_end False \
     --mm_use_im_patch_token False \
     --bf16 True \
-    --output_dir ./checkpoints/llava-v1.5-7b-pretrain-audio-connector-v1 \
-    --num_train_epochs 1 \
+    --output_dir checkpoints/llava-v1.5-7b-pretrain-audio-connector-v3 \
+    --num_train_epochs 2 \
     --per_device_train_batch_size 16 \
     --per_device_eval_batch_size 4 \
     --gradient_accumulation_steps 1 \
@@ -40,5 +38,5 @@ deepspeed llava/train/asr_train_mem.py \
     --dataloader_num_workers 4 \
     --lazy_preprocess True \
     --report_to wandb \
-    --report_to_wandb_project vlas \
+    --report_to_wandb_project vlas_v3 \
     --report_to_wandb_run_name vlas_ft_stage1

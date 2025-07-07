@@ -1,3 +1,27 @@
+"""
+Flask-based Demo Server for VLAS Model Deployment
+
+This file implements a Flask server for deploying a trained VLAS (Vision-Language-Action-Speech) model.
+The server handles different types of client requests and assembles corresponding model input instructions
+based on the request type. The main functionality includes:
+
+1. Loading a pretrained VLAS model with vision, language, and speech processing capabilities
+2. Processing multimodal inputs including images (static camera and gripper views), 
+   text/speech instructions, and robot states data
+3. Generating robot actions based on the processed inputs
+
+Note: For simplicity and convenience during testing, audio data is not transmitted directly 
+through network communication. Instead, all possible audio files are pre-stored on the 
+server side, and clients only need to send audio-related attribute information (such as 
+task name and speaker ID). The server then reads the corresponding audio files locally 
+based on the client's specifications.
+
+The server supports multiple instruction modes:
+- Text-only instructions for basic robot control
+- Speech instructions with predefined audio files
+- Voice RAG mode with additional context prompts
+"""
+
 from flask import Flask, jsonify, request, Response
 from llava.model.builder import load_pretrained_model_asr
 from llava.utils import disable_torch_init
@@ -8,7 +32,7 @@ from llava.mm_utils import (
     get_model_name_from_path,
 )
 from llava.constants import DEFAULT_IMAGE_TOKEN, DEFAULT_AUDIO_TOKEN
-from llava.action_tokenizer import ActionTokenizer, encode_robot_obs, denormalize_actions_real
+from llava.action_tokenizer import ActionTokenizer, encode_robot_obs
 from llava import conversation as conversation_lib
 
 import argparse
@@ -23,7 +47,9 @@ import torch
 from PIL import Image
 from functools import partial
 
-TARGET_IMG_SIZE = 334  # NOTE need to be consistent with that in calvin2json.py
+
+TARGET_IMG_SIZE = 336  # NOTE need to be consistent with that in calvin2json.py
+
 
 class LLMRobotServer:
     def __init__(self, args):
@@ -71,9 +97,8 @@ class LLMRobotServer:
         img_concat.paste(img_gripper, (0, TARGET_IMG_SIZE // 2))
 
         if debug:
-            img_concat.save("img_total_debug.jpg")
+            img_concat.save("./debug_img.png", "PNG")
 
-        # The image height is equal to the width, thus no pad or square
         image_tensor = self.image_processor.preprocess(img_concat, return_tensors="pt")[
             "pixel_values"
         ][0]
@@ -83,12 +108,14 @@ class LLMRobotServer:
         robot_obs = encode_robot_obs(robot_obs, self.action_tokenizer, self.action_stat)
 
         if isinstance(instruction, list) and len(instruction) == 2:
-            # This is audio mode
+            # 0. This is the regular speech mode
+            task_name = instruction[0]
+            spk_id = instruction[1]
+
             instruction_updated = (
                 DEFAULT_IMAGE_TOKEN + "\n" + DEFAULT_AUDIO_TOKEN + "\n" + robot_obs
             )
-            spk_id = instruction[1]
-            audio_id = self.eval_instruct2id[instruction[0]]
+            audio_id = self.eval_instruct2id[task_name]
             eval_audio = os.path.join(
                 self.eval_audio, spk_id, f"{audio_id:04}" + ".wav"
             )
@@ -97,15 +124,20 @@ class LLMRobotServer:
                 eval_audio, sampling_rate=16000, return_tensors="pt"
             ).input_features
         elif isinstance(instruction, list) and len(instruction) == 3:
-            # This is voice mode
+            # 1. This is the voice rag mode
             task_name = instruction[0]
             spk_id = instruction[1]
             rag_prompt = instruction[2]
 
             instruction_updated = (
-                DEFAULT_IMAGE_TOKEN + "\n" + rag_prompt + "\n" + DEFAULT_AUDIO_TOKEN + "\n" + robot_obs
+                DEFAULT_IMAGE_TOKEN
+                + "\n"
+                + rag_prompt
+                + "\n"
+                + DEFAULT_AUDIO_TOKEN
+                + "\n"
+                + robot_obs
             )
-            
             audio_id = self.eval_instruct2id[task_name]
             eval_audio = os.path.join(
                 self.eval_audio, spk_id, f"{audio_id:04}" + ".wav"
@@ -115,14 +147,17 @@ class LLMRobotServer:
                 eval_audio, sampling_rate=16000, return_tensors="pt"
             ).input_features
         else:
-            # This is normal mode
+            # 2. This is normal mode with textual instructions
             instruction_updated = (
-                DEFAULT_IMAGE_TOKEN + "\n" + instruction
+                DEFAULT_IMAGE_TOKEN + "\n" + instruction + "\n" + robot_obs
             )
             audio_tensor = None
 
         conv = conversation_lib.default_conversation.copy()
-        conv.system = "A chat between a curious user and an artificial intelligence robot. The robot provides actions to follow out the user's instructions."
+        conv.system = (
+            "A chat between a curious user and an artificial intelligence robot. "
+            "The robot provides actions to follow out the user's instructions."
+        )
         conv.append_message(conv.roles[0], instruction_updated)
         conv.append_message(conv.roles[1], None)
         instruction_updated = conv.get_prompt()
@@ -179,53 +214,43 @@ class LLMRobotServer:
         actions = []
         for elem in output_ids:
             actions.append(self.action_tokenizer.decode_token_ids_to_actions(elem))
-        actions = actions[:35]
         actions = np.array(actions)
-        actions = denormalize_actions_real(actions, statistics=self.action_stat)
         return actions
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-
-    ###@models
     parser.add_argument(
         "--model-path",
         type=str,
-        # default="/storage/zhaowei/checkpoints/llava-v1.5-7b-ur5-reduce5-nocotrain/checkpoint-1372", # Berkeley
-        default="/storage/zhaowei/checkpoints/llava-v1.5-7b-ur5-reduce5-calvin2our-audio-rbtl/checkpoint-2391" # our ur5 - cup
-        # default="/storage/zhaowei/checkpoints/llava-v1.5-7b-ur5-reduce5-4cards-nocotrain-our-normtoken-onberkeley-bowl-1002/checkpoint-617" # our ur5 - bowl
+        default="llava-v1.5-7b-calvin-rel-obs-reduce5-audio-v2-abcd2d",
     )
-
     parser.add_argument("--model-base", type=str, default=None)
     parser.add_argument("--image-folder", type=str, default="")
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top_p", type=float, default=None)
     parser.add_argument("--num_beams", type=int, default=1)
     parser.add_argument("--max_new_tokens", type=int, default=128)
-    
-    ###@mean|srd
     parser.add_argument(
         "--action_stat",
         type=str,
-        # default="/storage/zhaowei/data/berkeley_autolab_ur5/training/statistics.yaml", # Berkeley
-        default="/storage/zhaowei/data/berkeley_our_ur5/training/statistics.yaml" # our ur5 - cup
-        # default="/storage/zhaowei/data/berkeley_our_ur5/training_bowl/statistics.yaml" # our ur5 - bowl
+        default="/wangdonglin/calvin/task_ABCD_D/training/statistics.yaml",
     )
-    
     parser.add_argument("--port", type=int, default=9002)
     parser.add_argument(
         "--eval_instructions",
         type=str,
-        default="/zhaowei/workspace/LLaVA/playground/our_ur5_audio/eval/new_custom_validation.yaml", # our ur5
+        default="/zhaowei/workspace/LLaVA/playground/calvin_data_audio/eval/new_custom_validation.yaml",
     )
     parser.add_argument(
-        "--eval_audio", type=str, default="/zhaowei/data/our_ur5_eval_audio_custom" # our ur5
+        "--eval_audio",
+        type=str,
+        default="/zhaowei/data/calvin_eval_audio",
     )
     args = parser.parse_args()
-    
+
     flask_app = Flask(__name__)
-    llm_robot = LLMRobotServer(args)  
+    llm_robot = LLMRobotServer(args)
 
     @flask_app.route("/predict", methods=["POST"])
     def predict():
@@ -233,11 +258,11 @@ if __name__ == "__main__":
             img_static = np.frombuffer(
                 request.files["img_static"].read(), dtype=np.uint8
             )
-            img_static = img_static.reshape((480, 640, 3))
+            img_static = img_static.reshape((200, 200, 3))
             img_gripper = np.frombuffer(
                 request.files["img_gripper"].read(), dtype=np.uint8
             )
-            img_gripper = img_gripper.reshape((480, 640, 3))
+            img_gripper = img_gripper.reshape((84, 84, 3))
 
             content = request.files["json"].read()
             content = json.loads(content)
@@ -246,8 +271,6 @@ if __name__ == "__main__":
 
             img_static = Image.fromarray(img_static)
             img_gripper = Image.fromarray(img_gripper)
-            img_static.save("img_static_debug.jpg")
-            img_gripper.save("img_gripper_debug.jpg")
 
             input_ids, images, audios = llm_robot.compose_robot_input(
                 img_static, img_gripper, instruction, robot_obs

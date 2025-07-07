@@ -599,8 +599,8 @@ def mask_target_labels(conversations, conv, targets, tokenizer):
             parts[0] += sep
 
             if '<image>' in rou and not '<audio>' in rou:
-                round_len = len(tokenizer_image_token(rou, tokenizer))                   # 统计长度时多了<s>, 但少了</s>, 所以不变
-                instruction_len = len(tokenizer_image_token(parts[0], tokenizer)) - 2    # 统计长度时多了<s>, 且': '在句尾时多了' ', 所以减2
+                round_len = len(tokenizer_image_token(rou, tokenizer))                   # When counting length, added <s> but missing </s>, so length remains unchanged
+                instruction_len = len(tokenizer_image_token(parts[0], tokenizer)) - 2    # When counting length, added <s> and extra ' ' at end of ': ', so subtract 2
             elif '<audio>' in rou and not '<image>' in rou:
                 round_len = len(tokenizer_audio_token(rou, tokenizer))
                 instruction_len = len(tokenizer_audio_token(parts[0], tokenizer)) - 2
@@ -611,7 +611,7 @@ def mask_target_labels(conversations, conv, targets, tokenizer):
                 round_len = len(tokenizer(rou).input_ids)
                 instruction_len = len(tokenizer(parts[0]).input_ids) - 2
 
-            if i != 0 and not tokenizer.legacy and IS_TOKENIZER_GREATER_THAN_0_14:       # USER正常tokenize为两个token，但其前有特殊字符，如</s>时会tokenize为1个token，所以减1
+            if i != 0 and not tokenizer.legacy and IS_TOKENIZER_GREATER_THAN_0_14:       # USER normally tokenizes to two tokens, but when preceded by special characters like </s>, it tokenizes to 1 token, so subtract 1
                 round_len -= 1
                 instruction_len -= 1
 
@@ -953,7 +953,7 @@ class LazySupervisedDataset(Dataset):
             sources = [sources]
         assert len(sources) == 1, "Don't know why it is wrapped to a list"  # FIXME
 
-        # NOTE: 0. 如果存在图像，则对对会话数据中的图像数据进行初步预处理, 形成(3, 336, 336)张量
+        # NOTE: 0. If image exists, perform initial preprocessing on image data in conversation data to form (3, 336, 336) tensor
         if 'image' in sources[0]:
             image_file = self.list_data_dict[i]['image']
             image_folder = self.data_args.image_folder
@@ -977,7 +977,7 @@ class LazySupervisedDataset(Dataset):
             else:
                 image = processor.preprocess(image, return_tensors='pt')['pixel_values'][0]
         
-        # NOTE: 1. 如果存在音频，则对会话数据中的音频数据进行初步预处理, 形成(80, 3000)的张量
+        # NOTE: 1. If audio exists, perform initial preprocessing on audio data in conversation data to form (80, 3000) tensor
         if 'audio' in sources[0]:
             audio_file = self.list_data_dict[i]['audio']
             if 'image' in sources[0]:
@@ -989,7 +989,7 @@ class LazySupervisedDataset(Dataset):
             assert sr==16000, 'Unsupported Sampling Rate.'
             audio = audio_processor(audio, sampling_rate=sr, return_tensors='pt').input_features.squeeze(0)
 
-        # NOTE: 2. 如果存在图像或者音频，则对多模态数据的会话形式统一进行处理，否则只提取其原始会话
+        # NOTE: 2. If image or audio exists, uniformly process the conversation format of multimodal data, otherwise only extract the original conversation
         if 'image' in sources[0] or 'audio' in sources[0]: 
             sources = preprocess_multimodal_asr(
                     copy.deepcopy([e["conversations"] for e in sources]),

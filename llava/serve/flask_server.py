@@ -1,3 +1,17 @@
+"""
+Flask-based Demo Server for VLA (Vision-Language-Action) Model Deployment
+
+This file implements a Flask-based server that deploys a pre-trained VLA model for robot action prediction.
+The server receives visual inputs (static and gripper camera images), text instructions, and robot states
+from clients, processes them through the VLA model, and returns predicted robot actions.
+
+Main Components:
+- LLMRobotServer: Core class that handles model loading and inference
+- Flask endpoints: HTTP API for client-server communication
+- Image processing: Handles static and gripper camera images
+- Action generation: Converts model outputs to robot actions
+"""
+
 from flask import Flask, jsonify, request, Response
 from llava.model.builder import load_pretrained_model
 from llava.utils import disable_torch_init
@@ -22,7 +36,7 @@ from PIL import Image
 from functools import partial
 
 
-TARGET_IMG_SIZE = 334  # NOTE need to be consistent with that in calvin2json.py
+TARGET_IMG_SIZE = 336  # NOTE need to be consistent with that in calvin2json.py
 
 
 class LLMRobotServer:
@@ -56,7 +70,6 @@ class LLMRobotServer:
         if debug:
             img_concat.save("./debug_img.png", "PNG")
 
-        # The image height is equal to the width, thus no pad or square
         image_tensor = self.image_processor.preprocess(img_concat, return_tensors="pt")[
             "pixel_values"
         ][0]
@@ -67,7 +80,10 @@ class LLMRobotServer:
 
         instruction = DEFAULT_IMAGE_TOKEN + "\n" + instruction + "\n" + robot_obs
         conv = conversation_lib.default_conversation.copy()
-        conv.system = "A chat between a curious user and an artificial intelligence robot. The robot provides actions to follow out the user's instructions."
+        conv.system = (
+            "A chat between a curious user and an artificial intelligence robot. "
+            "The robot provides actions to follow out the user's instructions."
+        )
         conv.append_message(conv.roles[0], instruction)
         conv.append_message(conv.roles[1], None)
         instruction = conv.get_prompt()
@@ -113,7 +129,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model-path",
         type=str,
-        default="/zhaowei/workspace/LLaVA/checkpoints/llava-v1.5-7b-calvin-rel-obs-reduce12",
+        default="llava-v1.5-7b-calvin-rel-obs-reduce5-v2-abcd2d",
     )
     parser.add_argument("--model-base", type=str, default=None)
     parser.add_argument("--image-folder", type=str, default="")
@@ -135,9 +151,13 @@ if __name__ == "__main__":
     @flask_app.route("/predict", methods=["POST"])
     def predict():
         if request.method == "POST":
-            img_static = np.frombuffer(request.files["img_static"].read(), dtype=np.uint8)
+            img_static = np.frombuffer(
+                request.files["img_static"].read(), dtype=np.uint8
+            )
             img_static = img_static.reshape((200, 200, 3))
-            img_gripper = np.frombuffer(request.files["img_gripper"].read(), dtype=np.uint8)
+            img_gripper = np.frombuffer(
+                request.files["img_gripper"].read(), dtype=np.uint8
+            )
             img_gripper = img_gripper.reshape((84, 84, 3))
 
             content = request.files["json"].read()
